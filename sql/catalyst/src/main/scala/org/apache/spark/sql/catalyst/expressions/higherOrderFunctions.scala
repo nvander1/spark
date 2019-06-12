@@ -381,7 +381,8 @@ case class ArrayFilter(
 
 trait ArrayExistsForAllBase
 extends ArrayBasedSimpleHigherOrderFunction with CodegenFallback {
-  def check(cond: Boolean): Boolean
+  def emptyRes: Boolean
+  def isConfirmed(res: Boolean): Boolean
 
   override def dataType: DataType = BooleanType
   override def functionType: AbstractDataType = BooleanType
@@ -391,16 +392,14 @@ extends ArrayBasedSimpleHigherOrderFunction with CodegenFallback {
   override def nullSafeEval(inputRow: InternalRow, argumentValue: Any): Any = {
     val arr = argumentValue.asInstanceOf[ArrayData]
     val f = functionForEval
-    var continue = true
+    var res = emptyRes
     var i = 0
-    while (i < arr.numElements && continue) {
+    while (!isConfirmed(res) && i < arr.numElements) {
       elementVar.value.set(arr.get(i, elementVar.dataType))
-      if (check(f.eval(inputRow).asInstanceOf[Boolean])) {
-        continue = !continue
-      }
+      res = f.eval(inputRow).asInstanceOf[Boolean]
       i += 1
     }
-    !check(continue)
+    res
   }
 }
 
@@ -420,7 +419,8 @@ case class ArrayExists(
     function: Expression)
   extends ArrayExistsForAllBase {
   override def prettyName: String = "exists"
-  override def check(cond: Boolean): Boolean = cond
+  override def emptyRes: Boolean = false
+  override def isConfirmed(res: Boolean): Boolean = res
   override def bind(f: (Expression, Seq[(DataType, Boolean)]) => LambdaFunction): ArrayExists = {
     val ArrayType(elementType, containsNull) = argument.dataType
     copy(function = f(function, (elementType, containsNull) :: Nil))
@@ -445,7 +445,8 @@ case class ArrayForAll(
     function: Expression)
   extends ArrayExistsForAllBase {
   override def prettyName: String = "forall"
-  override def check(cond: Boolean): Boolean = !cond
+  override def emptyRes: Boolean = true
+  override def isConfirmed(res: Boolean): Boolean = !res
   override def bind(f: (Expression, Seq[(DataType, Boolean)]) => LambdaFunction): ArrayForAll = {
     val ArrayType(elementType, containsNull) = argument.dataType
     copy(function = f(function, (elementType, containsNull) :: Nil))
